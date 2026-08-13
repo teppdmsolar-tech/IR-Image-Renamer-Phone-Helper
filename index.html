@@ -3,17 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Field Log</title>
-<meta name="description" content="An offline-first log for notes and photos." />
-
-<!-- PWA metadata -->
+<title>Route Log</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#1F2A24" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Field Log" />
-
+<meta name="apple-mobile-web-app-title" content="Route Log" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -21,40 +17,80 @@
 <header class="topbar">
   <div class="brand">
     <span class="brand-mark" aria-hidden="true"></span>
-    <span class="brand-name">Field Log</span>
+    <span class="brand-name">Route Log</span>
   </div>
   <span id="netStatus" class="status status--offline">offline</span>
 </header>
 
 <main>
-  <section class="composer" aria-label="New entry">
-    <textarea id="entryText" placeholder="What did you notice?" rows="3"></textarea>
 
-    <div id="photoPreview" class="photo-preview" hidden>
-      <img id="photoPreviewImg" alt="Selected photo preview" />
-      <button id="removePhoto" type="button" class="icon-btn" aria-label="Remove photo">&times;</button>
+  <!-- SELECT VIEW: pick site + route, or import a new one -->
+  <section id="view-select" class="view">
+    <div class="panel">
+      <h1 class="panel-title">Select a route</h1>
+
+      <label class="field-label" for="siteSelect">Site</label>
+      <select id="siteSelect" class="select"></select>
+
+      <label class="field-label" for="routeSelect">Route</label>
+      <select id="routeSelect" class="select"></select>
+
+      <button id="startRouteBtn" class="btn-primary btn-block" type="button" disabled>Start route</button>
     </div>
 
-    <div class="composer-row">
-      <label class="icon-btn" for="photoInput" aria-label="Add photo">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
-          <rect x="3" y="5" width="18" height="14" rx="2"/>
-          <circle cx="8.5" cy="10.5" r="1.5"/>
-          <path d="M21 15l-4.5-4.5a2 2 0 0 0-2.8 0L5 19"/>
-        </svg>
+    <div class="panel">
+      <h2 class="panel-title panel-title--sub">Import a new route</h2>
+      <p class="hint">Upload a .txt, .xlsx, or .pdf file. The file name becomes the site name; <strong>**Bold**</strong> lines (or equivalent headers) become route names, with assets listed underneath.</p>
+      <label class="file-drop" for="importFile">
+        <span id="importFileLabel">Choose file&hellip;</span>
       </label>
-      <input id="photoInput" type="file" accept="image/*" hidden />
+      <input id="importFile" type="file" accept=".txt,.xlsx,.xls,.pdf" hidden />
+      <div id="importStatus" class="hint" aria-live="polite"></div>
+    </div>
 
-      <button id="addEntry" class="btn-primary" type="button">Add entry</button>
+    <div class="panel">
+      <h2 class="panel-title panel-title--sub">Past runs</h2>
+      <ul id="runList" class="run-list"></ul>
+      <p id="runEmptyState" class="empty-state">No completed runs yet.</p>
     </div>
   </section>
 
-  <section aria-label="Entries">
-    <ul id="entryList" class="entry-list"></ul>
-    <p id="emptyState" class="empty-state">No entries yet. Your first one will stay saved on this device, even offline.</p>
+  <!-- RUN VIEW: one asset at a time -->
+  <section id="view-run" class="view" hidden>
+    <div class="run-header">
+      <button id="exitRunBtn" class="icon-btn" type="button" aria-label="Exit route">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M15 19l-7-7 7-7"/>
+        </svg>
+      </button>
+      <div class="run-header-text">
+        <div id="runSiteRoute" class="run-header-title"></div>
+        <div id="runProgress" class="run-header-progress"></div>
+      </div>
+    </div>
+
+    <div class="asset-card">
+      <div id="assetIndex" class="asset-index"></div>
+      <h2 id="assetName" class="asset-name"></h2>
+
+      <label class="checkbox-row">
+        <input id="motorOffCheck" type="checkbox" />
+        <span>Motor off</span>
+      </label>
+    </div>
+
+    <div class="run-nav">
+      <button id="prevBtn" class="btn-secondary" type="button">Previous</button>
+      <button id="nextBtn" class="btn-primary" type="button">Next</button>
+    </div>
   </section>
+
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
