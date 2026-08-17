@@ -3,7 +3,7 @@
 // This file is safe to commit: the anon key is meant to be public,
 // access is controlled by Row Level Security policies in Supabase.
 
-const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://supabase.com/dashboard/project/vkpwsaouzqpedvbdaxsz/settings/api-keys';
+const SUPABASE_ANON_KEY = 'sb_publishable_q7ncCe6xS7icMoygmfBCfw_bPrI9gKi';
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
