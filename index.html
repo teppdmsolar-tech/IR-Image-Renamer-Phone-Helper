@@ -26,6 +26,16 @@
 
   <!-- SELECT VIEW: pick site + route, or import a new one -->
   <section id="view-select" class="view">
+
+    <div id="resumeBanner" class="panel resume-banner" hidden>
+      <h2 class="panel-title panel-title--sub">Resume in-progress route?</h2>
+      <p id="resumeText" class="hint"></p>
+      <div class="resume-actions">
+        <button id="discardResumeBtn" class="btn-secondary" type="button">Discard</button>
+        <button id="resumeBtn" class="btn-primary" type="button">Resume</button>
+      </div>
+    </div>
+
     <div class="panel">
       <h1 class="panel-title">Select a route</h1>
 
@@ -82,6 +92,19 @@
     <div class="run-nav">
       <button id="prevBtn" class="btn-secondary" type="button">Previous</button>
       <button id="nextBtn" class="btn-primary" type="button">Next</button>
+    </div>
+  </section>
+
+  <!-- COMPLETE VIEW: route finished, share/save the JSON -->
+  <section id="view-complete" class="view" hidden>
+    <div class="panel complete-panel">
+      <div class="complete-check" aria-hidden="true">&#10003;</div>
+      <h1 class="panel-title">Route complete</h1>
+      <p id="completeSummary" class="hint"></p>
+      <p id="completeSyncStatus" class="hint"></p>
+
+      <button id="shareRunBtn" class="btn-primary btn-block" type="button">Share / Email JSON</button>
+      <button id="doneBtn" class="btn-secondary btn-block" type="button">Done</button>
     </div>
   </section>
 

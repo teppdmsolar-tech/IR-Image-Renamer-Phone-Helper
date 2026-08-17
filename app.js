@@ -295,17 +295,20 @@ async function loadRuns() {
   } catch (err) {
     return; // Non-fatal if config isn't set up yet.
   }
-  runEmptyState.hidden = runs.length > 0;
+  const pendingCount = getPendingRuns().length;
+  runEmptyState.hidden = runs.length > 0 || pendingCount > 0;
   runList.innerHTML = runs.map((r) => `
     <li>
       <span>${r.site_name} — ${r.route_name} (${r.run_date})</span>
-      <button data-run-id="${r.id}" type="button">download</button>
+      <button data-run-id="${r.id}" type="button">share</button>
     </li>
-  `).join('');
+  `).join('') + (pendingCount
+    ? `<li class="run-list__pending"><span>${pendingCount} run(s) waiting to sync&hellip;</span></li>`
+    : '');
   runList.querySelectorAll('button[data-run-id]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const run = runs.find((r) => r.id === btn.dataset.runId);
-      downloadJson(run.data, run.data.fileName);
+      shareOrDownloadJson(run.data, run.data.fileName);
     });
   });
 }
@@ -320,6 +323,24 @@ const assetName = document.getElementById('assetName');
 const motorOffCheck = document.getElementById('motorOffCheck');
 const prevBtn = document.getElementById('prevBtn');
 const nextBtn = document.getElementById('nextBtn');
+
+// Autosaved so an in-progress route survives the app closing, the phone
+// locking, losing signal, or a browser crash — not just a controlled exit.
+const ACTIVE_RUN_KEY = 'route-log:active-run';
+
+function saveActiveRun() {
+  if (runState) localStorage.setItem(ACTIVE_RUN_KEY, JSON.stringify(runState));
+}
+function clearActiveRun() {
+  localStorage.removeItem(ACTIVE_RUN_KEY);
+}
+function loadActiveRunFromStorage() {
+  try {
+    return JSON.parse(localStorage.getItem(ACTIVE_RUN_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
 
 let runState = null; // { siteName, routeName, routeId, assets, index, checks }
 
@@ -343,16 +364,20 @@ startRouteBtn.addEventListener('click', async () => {
     checks: assets.map(() => false)
   };
 
+  saveActiveRun();
   viewSelect.hidden = true;
   viewRun.hidden = false;
   renderAsset();
 });
 
 exitRunBtn.addEventListener('click', () => {
-  if (!confirm('Exit this route? Progress will be lost unless you complete it.')) return;
+  // Progress is autosaved as you go, so exiting doesn't lose anything —
+  // it'll be offered back to you as "Resume" next time you open the app.
+  if (!confirm("Exit this route? Your progress is saved — you'll be able to resume it later.")) return;
   runState = null;
   viewRun.hidden = true;
   viewSelect.hidden = false;
+  checkForResumableRun();
 });
 
 function renderAsset() {
@@ -371,11 +396,13 @@ function renderAsset() {
 
 motorOffCheck.addEventListener('change', () => {
   runState.checks[runState.index] = motorOffCheck.checked;
+  saveActiveRun();
 });
 
 prevBtn.addEventListener('click', () => {
   if (runState.index === 0) return;
   runState.index -= 1;
+  saveActiveRun();
   renderAsset();
 });
 
@@ -383,6 +410,7 @@ nextBtn.addEventListener('click', async () => {
   const isLast = runState.index === runState.assets.length - 1;
   if (!isLast) {
     runState.index += 1;
+    saveActiveRun();
     renderAsset();
     return;
   }
@@ -412,10 +440,102 @@ function downloadJson(obj, fileName) {
   URL.revokeObjectURL(url);
 }
 
+// Opens the native Share Sheet (Mail, Messages, AirDrop, Save to Files,
+// etc.) with the JSON attached as a real file — this is what avoids the
+// clunky "tap to open, then figure out what to do with it" screen.
+// Falls back to a plain download on browsers/desktops without share support.
+async function shareOrDownloadJson(obj, fileName) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const file = new File([blob], fileName, { type: 'application/json' });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: fileName,
+        text: `Completed route: ${fileName}`
+      });
+      return 'shared';
+    } catch (err) {
+      if (err.name === 'AbortError') return 'cancelled'; // user backed out of the share sheet
+      // Fall through to download if share failed for some other reason.
+    }
+  }
+  downloadJson(obj, fileName);
+  return 'downloaded';
+}
+
+// ---------- Offline queue for completed runs ----------
+// If Supabase can't be reached when a route is completed (no connection,
+// project paused, etc.), the run is kept here and retried automatically
+// the next time the app is online — so nothing has to be re-entered.
+
+const PENDING_KEY = 'route-log:pending-runs';
+
+function getPendingRuns() {
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function setPendingRuns(runs) {
+  localStorage.setItem(PENDING_KEY, JSON.stringify(runs));
+}
+
+function addPendingRun(run) {
+  const runs = getPendingRuns();
+  runs.push(run);
+  setPendingRuns(runs);
+}
+
+async function flushPendingRuns() {
+  const runs = getPendingRuns();
+  if (!runs.length) return;
+  const stillPending = [];
+  for (const run of runs) {
+    try {
+      await saveRun(run.record);
+    } catch (err) {
+      stillPending.push(run);
+    }
+  }
+  setPendingRuns(stillPending);
+  if (stillPending.length !== runs.length) {
+    loadRuns(); // some synced — refresh the list
+  }
+}
+
+window.addEventListener('online', flushPendingRuns);
+
+// ---------- UI: complete view ----------
+
+const viewComplete = document.getElementById('view-complete');
+const completeSummary = document.getElementById('completeSummary');
+const completeSyncStatus = document.getElementById('completeSyncStatus');
+const shareRunBtn = document.getElementById('shareRunBtn');
+const doneBtn = document.getElementById('doneBtn');
+
+let lastCompletedPayload = null;
+
+shareRunBtn.addEventListener('click', async () => {
+  if (!lastCompletedPayload) return;
+  await shareOrDownloadJson(lastCompletedPayload, lastCompletedPayload.fileName);
+});
+
+doneBtn.addEventListener('click', () => {
+  viewComplete.hidden = true;
+  viewSelect.hidden = false;
+  lastCompletedPayload = null;
+  loadRuns();
+});
+
 async function completeRoute() {
   const { siteName, routeName, routeId, assets, checks } = runState;
   const dateStamp = todayStamp();
   const fileName = `${slugify(siteName)}-${slugify(routeName)}-${dateStamp}.json`;
+  const offCount = checks.filter(Boolean).length;
 
   const payload = {
     site: siteName,
@@ -426,26 +546,71 @@ async function completeRoute() {
     assets: assets.map((a, i) => ({ name: a.name, motorOff: checks[i] }))
   };
 
-  downloadJson(payload, fileName);
+  const record = {
+    route_id: routeId,
+    site_name: siteName,
+    route_name: routeName,
+    run_date: dateStamp,
+    data: payload
+  };
 
+  let synced = false;
   try {
-    await saveRun({
-      route_id: routeId,
-      site_name: siteName,
-      route_name: routeName,
-      run_date: dateStamp,
-      data: payload
-    });
+    await saveRun(record);
+    synced = true;
   } catch (err) {
-    console.error('Could not save run to Supabase:', err);
-    // Non-fatal — the JSON file already downloaded locally.
+    addPendingRun({ record });
   }
 
+  lastCompletedPayload = payload;
   runState = null;
+  clearActiveRun();
   viewRun.hidden = true;
-  viewSelect.hidden = false;
-  loadRuns();
+  viewComplete.hidden = false;
+
+  completeSummary.textContent = `${siteName} — ${routeName}: ${offCount} of ${assets.length} marked Motor off.`;
+  completeSyncStatus.textContent = synced
+    ? 'Saved — visible on all your devices.'
+    : "Saved on this device only for now — it'll sync automatically once you're back online.";
+  completeSyncStatus.className = 'hint ' + (synced ? '' : 'hint--pending');
 }
 
 loadSites();
 loadRuns();
+flushPendingRuns();
+
+// ---------- Resume an interrupted route ----------
+
+const resumeBanner = document.getElementById('resumeBanner');
+const resumeText = document.getElementById('resumeText');
+const resumeBtn = document.getElementById('resumeBtn');
+const discardResumeBtn = document.getElementById('discardResumeBtn');
+
+function checkForResumableRun() {
+  const saved = loadActiveRunFromStorage();
+  if (!saved) {
+    resumeBanner.hidden = true;
+    return;
+  }
+  const doneCount = saved.checks.filter(Boolean).length;
+  resumeText.textContent = `${saved.siteName} — ${saved.routeName}: stopped at asset ${saved.index + 1} of ${saved.assets.length} (${doneCount} checked so far).`;
+  resumeBanner.hidden = false;
+}
+
+resumeBtn.addEventListener('click', () => {
+  const saved = loadActiveRunFromStorage();
+  if (!saved) return;
+  runState = saved;
+  resumeBanner.hidden = true;
+  viewSelect.hidden = true;
+  viewRun.hidden = false;
+  renderAsset();
+});
+
+discardResumeBtn.addEventListener('click', () => {
+  if (!confirm('Discard this in-progress route? This cannot be undone.')) return;
+  clearActiveRun();
+  resumeBanner.hidden = true;
+});
+
+checkForResumableRun();
