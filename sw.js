@@ -1,5 +1,5 @@
 // Bump this whenever cached files change so returning visitors get updates.
-const CACHE_NAME = 'route-log-v2';
+const CACHE_NAME = 'route-log-v3';
 
 const APP_SHELL = [
   './',
@@ -34,8 +34,16 @@ self.addEventListener('activate', (event) => {
 // this again, falling back to the cached copy only when offline.
 // Everything else (css/js/icons) is cache-first for speed, since those are
 // versioned by CACHE_NAME above whenever they change.
+//
+// IMPORTANT: only intercept same-origin requests (this app's own files).
+// Supabase calls are cross-origin — if this SW intercepted those too and
+// anything went wrong, respondWith could resolve to nothing and the
+// browser reports it as an opaque "Load failed" with no useful detail.
+// Letting cross-origin requests fall through to the network normally
+// means real Supabase errors surface as their actual message instead.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  if (new URL(event.request.url).origin !== self.location.origin) return;
 
   const isHTML = event.request.mode === 'navigate' ||
     (event.request.headers.get('accept') || '').includes('text/html');
