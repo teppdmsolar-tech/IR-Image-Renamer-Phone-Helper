@@ -40,24 +40,10 @@
       <h1 class="panel-title">Select a route</h1>
 
       <label class="field-label" for="siteSelect">Site</label>
-      <div class="select-row">
-        <select id="siteSelect" class="select"></select>
-        <button id="deleteSiteBtn" class="icon-btn icon-btn--danger" type="button" disabled aria-label="Delete site">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z"/>
-          </svg>
-        </button>
-      </div>
+      <select id="siteSelect" class="select"></select>
 
       <label class="field-label" for="routeSelect">Route</label>
-      <div class="select-row">
-        <select id="routeSelect" class="select"></select>
-        <button id="deleteRouteBtn" class="icon-btn icon-btn--danger" type="button" disabled aria-label="Delete route">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z"/>
-          </svg>
-        </button>
-      </div>
+      <select id="routeSelect" class="select"></select>
 
       <button id="startRouteBtn" class="btn-primary btn-block" type="button" disabled>Start route</button>
     </div>
@@ -70,6 +56,22 @@
       </label>
       <input id="importFile" type="file" accept=".txt,.xlsx,.xls,.pdf" hidden />
       <div id="importStatus" class="hint" aria-live="polite"></div>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title panel-title--sub">Delete a site or route</h2>
+      <p class="hint">Choose a site, then optionally a specific route. Leave the route as "Entire site" to delete the site and everything in it.</p>
+
+      <label class="field-label" for="delSiteSelect">Site</label>
+      <select id="delSiteSelect" class="select"></select>
+
+      <label class="field-label" for="delRouteSelect">Route</label>
+      <select id="delRouteSelect" class="select" disabled>
+        <option value="">Select a site first&hellip;</option>
+      </select>
+
+      <button id="delSubmitBtn" class="btn-primary btn-block btn-block--danger" type="button" disabled>Delete</button>
+      <div id="delStatus" class="hint" aria-live="polite"></div>
     </div>
 
     <div class="panel">

@@ -238,8 +238,6 @@ const viewRun = document.getElementById('view-run');
 const siteSelect = document.getElementById('siteSelect');
 const routeSelect = document.getElementById('routeSelect');
 const startRouteBtn = document.getElementById('startRouteBtn');
-const deleteSiteBtn = document.getElementById('deleteSiteBtn');
-const deleteRouteBtn = document.getElementById('deleteRouteBtn');
 const importFile = document.getElementById('importFile');
 const importFileLabel = document.getElementById('importFileLabel');
 const importStatus = document.getElementById('importStatus');
@@ -280,16 +278,19 @@ async function loadSites() {
   routeSelect.innerHTML = '<option value="">Select a site first&hellip;</option>';
   routeSelect.disabled = true;
   startRouteBtn.disabled = true;
-  deleteSiteBtn.disabled = true;
-  deleteRouteBtn.disabled = true;
+
+  // Keep the delete panel's site dropdown in sync too.
+  delSiteSelect.innerHTML = '<option value="">Select a site&hellip;</option>' +
+    sitesCache.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+  delRouteSelect.innerHTML = '<option value="">Select a site first&hellip;</option>';
+  delRouteSelect.disabled = true;
+  delSubmitBtn.disabled = true;
 }
 
 siteSelect.addEventListener('change', async () => {
   const siteId = siteSelect.value;
   routeSelect.innerHTML = '';
   startRouteBtn.disabled = true;
-  deleteSiteBtn.disabled = !siteId;
-  deleteRouteBtn.disabled = true;
   if (!siteId) {
     routeSelect.innerHTML = '<option value="">Select a site first&hellip;</option>';
     routeSelect.disabled = true;
@@ -304,35 +305,101 @@ siteSelect.addEventListener('change', async () => {
 
 routeSelect.addEventListener('change', () => {
   startRouteBtn.disabled = !routeSelect.value;
-  deleteRouteBtn.disabled = !routeSelect.value;
 });
 
-deleteSiteBtn.addEventListener('click', async () => {
-  const siteId = siteSelect.value;
+// ---------- UI: delete panel ----------
+
+const delSiteSelect = document.getElementById('delSiteSelect');
+const delRouteSelect = document.getElementById('delRouteSelect');
+const delSubmitBtn = document.getElementById('delSubmitBtn');
+const delStatus = document.getElementById('delStatus');
+
+let delRoutesCache = []; // routes currently loaded for the selected delete-site
+
+delSiteSelect.addEventListener('change', async () => {
+  const siteId = delSiteSelect.value;
+  delStatus.textContent = '';
+  delStatus.className = 'hint';
+  delRouteSelect.innerHTML = '';
+  delSubmitBtn.disabled = true;
+
+  if (!siteId) {
+    delRouteSelect.innerHTML = '<option value="">Select a site first&hellip;</option>';
+    delRouteSelect.disabled = true;
+    return;
+  }
+
+  delRouteSelect.disabled = false;
+  delRouteSelect.innerHTML = '<option value="">Loading&hellip;</option>';
+  try {
+    delRoutesCache = await fetchRoutes(siteId);
+  } catch (err) {
+    delStatus.textContent = 'Could not load routes: ' + describeError(err);
+    delStatus.className = 'hint hint--error';
+    delRouteSelect.innerHTML = '<option value="">&mdash;</option>';
+    return;
+  }
+  delRouteSelect.innerHTML =
+    `<option value="">Entire site (${delRoutesCache.length} route${delRoutesCache.length === 1 ? '' : 's'})</option>` +
+    delRoutesCache.map((r) => `<option value="${r.id}">${r.name}</option>`).join('');
+  delSubmitBtn.disabled = false;
+});
+
+delRouteSelect.addEventListener('change', () => {
+  delSubmitBtn.disabled = !delSiteSelect.value;
+});
+
+delSubmitBtn.addEventListener('click', async () => {
+  const siteId = delSiteSelect.value;
   if (!siteId) return;
-  const siteName = siteSelect.options[siteSelect.selectedIndex].text;
-  if (!confirm(`Delete "${siteName}" and all its routes? This cannot be undone. Past completed runs for this site are kept.`)) return;
+  const siteName = delSiteSelect.options[delSiteSelect.selectedIndex].text;
+  const routeId = delRouteSelect.value;
+
+  if (routeId) {
+    // Deleting one specific route.
+    const routeName = delRouteSelect.options[delRouteSelect.selectedIndex].text;
+    if (!confirm(`Delete route "${routeName}" from "${siteName}"? This cannot be undone. Past completed runs for this route are kept.`)) return;
+
+    delSubmitBtn.disabled = true;
+    delStatus.textContent = 'Deleting…';
+    delStatus.className = 'hint hint--loading';
+    try {
+      await deleteRoute(routeId);
+      delStatus.textContent = `Deleted route "${routeName}".`;
+      delStatus.className = 'hint hint--success';
+      await loadSites();
+      // Restore the site selection so the panel doesn't reset to nothing.
+      delSiteSelect.value = siteId;
+      delSiteSelect.dispatchEvent(new Event('change'));
+    } catch (err) {
+      delStatus.textContent = 'Delete failed: ' + describeError(err);
+      delStatus.className = 'hint hint--error';
+      delSubmitBtn.disabled = false;
+    }
+    return;
+  }
+
+  // No specific route chosen — deleting the entire site.
+  // Per requirement: only allowed outright if the site has no routes,
+  // otherwise an explicit confirmation naming the route count is required.
+  const routeCount = delRoutesCache.length;
+  const confirmMsg = routeCount > 0
+    ? `"${siteName}" has ${routeCount} route${routeCount === 1 ? '' : 's'}. Delete the entire site and all ${routeCount === 1 ? 'that route' : 'those routes'}? This cannot be undone. Past completed runs are kept.`
+    : `Delete "${siteName}"? This cannot be undone.`;
+  if (!confirm(confirmMsg)) return;
+
+  delSubmitBtn.disabled = true;
+  delStatus.textContent = 'Deleting…';
+  delStatus.className = 'hint hint--loading';
   try {
     await deleteSite(siteId);
+    delStatus.textContent = `Deleted site "${siteName}" and all its routes.`;
+    delStatus.className = 'hint hint--success';
     await loadSites();
-    importStatus.textContent = `Deleted site "${siteName}".`;
   } catch (err) {
-    importStatus.textContent = 'Delete failed: ' + describeError(err);
-  }
-});
-
-deleteRouteBtn.addEventListener('click', async () => {
-  const routeId = routeSelect.value;
-  if (!routeId) return;
-  const routeName = routeSelect.options[routeSelect.selectedIndex].text;
-  if (!confirm(`Delete route "${routeName}"? This cannot be undone. Past completed runs for this route are kept.`)) return;
-  try {
-    await deleteRoute(routeId);
-    // Re-trigger the site's route list to refresh without losing the site selection.
-    siteSelect.dispatchEvent(new Event('change'));
-    importStatus.textContent = `Deleted route "${routeName}".`;
-  } catch (err) {
-    importStatus.textContent = 'Delete failed: ' + describeError(err);
+    delStatus.textContent = 'Delete failed: ' + describeError(err);
+    delStatus.className = 'hint hint--error';
+    delSubmitBtn.disabled = false;
   }
 });
 
