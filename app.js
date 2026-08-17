@@ -132,6 +132,20 @@ async function fetchSites() {
   return data;
 }
 
+async function deleteSite(siteId) {
+  // schema.sql cascades this delete to the site's routes and their assets.
+  // Past route_runs are kept (route_id just becomes null on them) so
+  // completed history isn't lost.
+  const { error } = await supabaseClient.from('sites').delete().eq('id', siteId);
+  if (error) throw error;
+}
+
+async function deleteRoute(routeId) {
+  // Cascades to the route's assets. Past route_runs for this route are kept.
+  const { error } = await supabaseClient.from('routes').delete().eq('id', routeId);
+  if (error) throw error;
+}
+
 async function fetchRoutes(siteId) {
   const { data, error } = await supabaseClient
     .from('routes')
@@ -193,8 +207,26 @@ window.addEventListener('offline', updateNetStatus);
 updateNetStatus();
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch((err) => console.error('SW registration failed:', err));
+  window.addEventListener('load', async () => {
+    try {
+      // updateViaCache: 'none' stops the browser from ever serving sw.js
+      // itself out of HTTP cache — without this, a phone can keep re-running
+      // an old service worker indefinitely because it never even re-checks
+      // for a new one, no matter how many times you close/reopen the app.
+      const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+      reg.update(); // also actively check for an update on every load
+
+      // Once a new service worker takes over, reload automatically so the
+      // update applies immediately instead of waiting for a future visit.
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloaded) return;
+        reloaded = true;
+        window.location.reload();
+      });
+    } catch (err) {
+      console.error('SW registration failed:', err);
+    }
   });
 }
 
@@ -206,6 +238,8 @@ const viewRun = document.getElementById('view-run');
 const siteSelect = document.getElementById('siteSelect');
 const routeSelect = document.getElementById('routeSelect');
 const startRouteBtn = document.getElementById('startRouteBtn');
+const deleteSiteBtn = document.getElementById('deleteSiteBtn');
+const deleteRouteBtn = document.getElementById('deleteRouteBtn');
 const importFile = document.getElementById('importFile');
 const importFileLabel = document.getElementById('importFileLabel');
 const importStatus = document.getElementById('importStatus');
@@ -246,12 +280,16 @@ async function loadSites() {
   routeSelect.innerHTML = '<option value="">Select a site first&hellip;</option>';
   routeSelect.disabled = true;
   startRouteBtn.disabled = true;
+  deleteSiteBtn.disabled = true;
+  deleteRouteBtn.disabled = true;
 }
 
 siteSelect.addEventListener('change', async () => {
   const siteId = siteSelect.value;
   routeSelect.innerHTML = '';
   startRouteBtn.disabled = true;
+  deleteSiteBtn.disabled = !siteId;
+  deleteRouteBtn.disabled = true;
   if (!siteId) {
     routeSelect.innerHTML = '<option value="">Select a site first&hellip;</option>';
     routeSelect.disabled = true;
@@ -266,6 +304,36 @@ siteSelect.addEventListener('change', async () => {
 
 routeSelect.addEventListener('change', () => {
   startRouteBtn.disabled = !routeSelect.value;
+  deleteRouteBtn.disabled = !routeSelect.value;
+});
+
+deleteSiteBtn.addEventListener('click', async () => {
+  const siteId = siteSelect.value;
+  if (!siteId) return;
+  const siteName = siteSelect.options[siteSelect.selectedIndex].text;
+  if (!confirm(`Delete "${siteName}" and all its routes? This cannot be undone. Past completed runs for this site are kept.`)) return;
+  try {
+    await deleteSite(siteId);
+    await loadSites();
+    importStatus.textContent = `Deleted site "${siteName}".`;
+  } catch (err) {
+    importStatus.textContent = 'Delete failed: ' + describeError(err);
+  }
+});
+
+deleteRouteBtn.addEventListener('click', async () => {
+  const routeId = routeSelect.value;
+  if (!routeId) return;
+  const routeName = routeSelect.options[routeSelect.selectedIndex].text;
+  if (!confirm(`Delete route "${routeName}"? This cannot be undone. Past completed runs for this route are kept.`)) return;
+  try {
+    await deleteRoute(routeId);
+    // Re-trigger the site's route list to refresh without losing the site selection.
+    siteSelect.dispatchEvent(new Event('change'));
+    importStatus.textContent = `Deleted route "${routeName}".`;
+  } catch (err) {
+    importStatus.textContent = 'Delete failed: ' + describeError(err);
+  }
 });
 
 importFile.addEventListener('change', async () => {
