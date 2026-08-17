@@ -3,18 +3,23 @@
 // devices. See config.js for connection setup and schema.sql for the tables.
 
 // ---------- Parsing ----------
-// Expected shape, regardless of source file type:
-//   Route Name          <- a "header" line
+// Two supported .txt/.pdf/.xlsx shapes:
+//
+// Template A — multiple routes in one file:
+//   **Route Name**
 //     asset line
 //     asset line
-//   Another Route Name
+//   **Another Route Name**
 //     asset line ...
-// A line counts as a header if it's wrapped in **asterisks** (txt/pdf export
-// of bold text) OR, for spreadsheets, if it's alone in its row with nothing
-// in adjacent asset columns. See parseLines() for the shared logic once we
-// have a flat list of lines.
+//
+// Template B — a flat list with no route headers at all. The whole file
+// is one route, named after the file itself (same as the site name).
+//
+// A line counts as a header if it's wrapped in **asterisks** (txt/pdf
+// export of bold text) OR, for spreadsheets, if it's alone in its row
+// with nothing in adjacent asset columns.
 
-function parseLines(lines) {
+function parseLines(lines, defaultRouteName) {
   const routes = []; // { name, assets: [string] }
   let current = null;
 
@@ -30,8 +35,8 @@ function parseLines(lines) {
     }
 
     if (!current) {
-      // Asset appeared before any header — bucket it under a default route.
-      current = { name: 'Route', assets: [] };
+      // No header seen yet — Template B, name the route after the file.
+      current = { name: defaultRouteName, assets: [] };
       routes.push(current);
     }
     current.assets.push(line);
@@ -40,21 +45,21 @@ function parseLines(lines) {
   return routes;
 }
 
-async function parseTxtFile(file) {
+async function parseTxtFile(file, defaultRouteName) {
   const text = await file.text();
-  return parseLines(text.split('\n'));
+  return parseLines(text.split('\n'), defaultRouteName);
 }
 
-async function parseXlsxFile(file) {
+async function parseXlsxFile(file, defaultRouteName) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
   const lines = rows.map((row) => (row && row[0] != null ? String(row[0]) : ''));
-  return parseLines(lines);
+  return parseLines(lines, defaultRouteName);
 }
 
-async function parsePdfFile(file) {
+async function parsePdfFile(file, defaultRouteName) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const lines = [];
@@ -76,16 +81,16 @@ async function parsePdfFile(file) {
       if (rowText) lines.push(rowText);
     }
   }
-  return parseLines(lines);
+  return parseLines(lines, defaultRouteName);
 }
 
 async function parseFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   const siteName = file.name.replace(/\.[^.]+$/, '');
   let routes;
-  if (ext === 'txt') routes = await parseTxtFile(file);
-  else if (ext === 'xlsx' || ext === 'xls') routes = await parseXlsxFile(file);
-  else if (ext === 'pdf') routes = await parsePdfFile(file);
+  if (ext === 'txt') routes = await parseTxtFile(file, siteName);
+  else if (ext === 'xlsx' || ext === 'xls') routes = await parseXlsxFile(file, siteName);
+  else if (ext === 'pdf') routes = await parsePdfFile(file, siteName);
   else throw new Error('Unsupported file type: ' + ext);
   return { siteName, routes };
 }
@@ -207,13 +212,33 @@ const importStatus = document.getElementById('importStatus');
 const runList = document.getElementById('runList');
 const runEmptyState = document.getElementById('runEmptyState');
 
+// Turns opaque browser/network errors into something actionable. "Load
+// failed" / "Failed to fetch" style messages mean the request to Supabase
+// never got a response at all — almost always a bad URL in config.js, a
+// paused free-tier project, or no internet connection, rather than a bug
+// in the app itself.
+function describeError(err) {
+  const msg = (err && err.message) || String(err);
+  const isNetworkFailure = /load failed|failed to fetch|network/i.test(msg);
+  if (isNetworkFailure) {
+    if (!navigator.onLine) {
+      return 'No internet connection right now.';
+    }
+    if (!SUPABASE_URL || SUPABASE_URL.includes('YOUR_SUPABASE')) {
+      return 'config.js still has placeholder Supabase values — paste in your real Project URL and anon key.';
+    }
+    return 'Could not reach Supabase (' + SUPABASE_URL + '). Check: the URL in config.js is exactly right (starts with https://, no trailing slash or extra spaces), the anon key was copied in full, and your Supabase project isn\'t paused (free-tier projects pause after a week idle — restart it from the Supabase dashboard).';
+  }
+  return msg;
+}
+
 let sitesCache = [];
 
 async function loadSites() {
   try {
     sitesCache = await fetchSites();
   } catch (err) {
-    importStatus.textContent = 'Could not load sites: ' + err.message + ' (check config.js is set up)';
+    importStatus.textContent = 'Could not load sites: ' + describeError(err);
     return;
   }
   siteSelect.innerHTML = '<option value="">Select a site&hellip;</option>' +
@@ -256,7 +281,7 @@ importFile.addEventListener('change', async () => {
     importStatus.textContent = `Imported "${siteName}": ${routes.length} route(s).`;
     await loadSites();
   } catch (err) {
-    importStatus.textContent = 'Import failed: ' + err.message;
+    importStatus.textContent = 'Import failed: ' + describeError(err);
   } finally {
     importFile.value = '';
     importFileLabel.textContent = 'Choose file…';
