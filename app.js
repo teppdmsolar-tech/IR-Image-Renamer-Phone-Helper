@@ -194,6 +194,25 @@ async function saveRun(run) {
   if (error) throw error;
 }
 
+// ---------- Retention: auto-delete runs older than 30 days ----------
+// This is a client-side safety net that runs once per app open. The
+// primary mechanism is a scheduled job in Supabase (see cleanup.sql) that
+// runs daily on the server regardless of whether the app is ever opened —
+// this just catches anything in between, or covers you if that job isn't
+// set up yet.
+
+const RUN_RETENTION_DAYS = 30;
+
+async function deleteOldRuns() {
+  const cutoff = new Date(Date.now() - RUN_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    await supabaseClient.from('route_runs').delete().lt('created_at', cutoff);
+  } catch (err) {
+    // Non-fatal — just means old runs stick around a bit longer than usual.
+    console.error('Could not clean up old runs:', err);
+  }
+}
+
 // ---------- UI: shared elements ----------
 
 const netStatus = document.getElementById('netStatus');
@@ -713,6 +732,7 @@ async function completeRoute() {
 loadSites();
 loadRuns();
 flushPendingRuns();
+deleteOldRuns().then(() => loadRuns()); // trim first, then refresh the list shown
 
 // ---------- Resume an interrupted route ----------
 

@@ -1,5 +1,5 @@
 // Bump this whenever cached files change so returning visitors get updates.
-const CACHE_NAME = 'route-log-v8';
+const CACHE_NAME = 'route-log-v9';
 
 const APP_SHELL = [
   './',

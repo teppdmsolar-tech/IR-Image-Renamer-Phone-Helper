@@ -47,6 +47,22 @@ users can read/write, or (b) move to a database your company already
 controls, self-hosted or via their cloud account — the app code barely
 changes, only `config.js` and the security rules in `schema.sql`.
 
+### Optional: auto-delete old runs after 30 days
+
+Completed runs pile up over time. To keep storage tidy, open **SQL
+Editor** in Supabase again, paste in the contents of `cleanup.sql` from
+this folder, and run it once. This sets up a daily job (via Supabase's
+free `pg_cron` extension) that deletes any completed run older than 30
+days — it runs on Supabase's own schedule, so it happens automatically
+even if nobody opens the app for a while.
+
+As a backup, the app itself also does a quick cleanup pass of anything
+older than 30 days whenever it's opened — so even without the SQL job
+set up, old runs won't accumulate forever as long as the app gets
+opened occasionally. Want a different retention window? Change `30
+days` in both `cleanup.sql` and `RUN_RETENTION_DAYS` near the top of
+`app.js`'s retention section.
+
 ## 2. Try it locally
 
 ```
