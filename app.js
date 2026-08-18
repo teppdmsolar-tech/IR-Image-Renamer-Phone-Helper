@@ -475,6 +475,7 @@ const runProgress = document.getElementById('runProgress');
 const assetIndex = document.getElementById('assetIndex');
 const assetName = document.getElementById('assetName');
 const motorOffCheck = document.getElementById('motorOffCheck');
+const noImageCheck = document.getElementById('noImageCheck');
 const prevBtn = document.getElementById('prevBtn');
 const nextBtn = document.getElementById('nextBtn');
 
@@ -515,7 +516,8 @@ startRouteBtn.addEventListener('click', async () => {
     routeId,
     assets,
     index: 0,
-    checks: assets.map(() => false)
+    checks: assets.map(() => false),
+    noImageChecks: assets.map(() => false)
   };
 
   saveActiveRun();
@@ -535,6 +537,9 @@ exitRunBtn.addEventListener('click', () => {
 });
 
 function renderAsset() {
+  if (!runState.noImageChecks) {
+    runState.noImageChecks = runState.assets.map(() => false);
+  }
   const { assets, index, checks } = runState;
   const total = assets.length;
 
@@ -543,6 +548,7 @@ function renderAsset() {
   assetIndex.textContent = `${index + 1} / ${total}`;
   assetName.textContent = assets[index].name;
   motorOffCheck.checked = checks[index];
+  noImageCheck.checked = runState.noImageChecks[index];
 
   prevBtn.disabled = index === 0;
   nextBtn.textContent = index === total - 1 ? 'Complete route' : 'Next';
@@ -550,6 +556,11 @@ function renderAsset() {
 
 motorOffCheck.addEventListener('change', () => {
   runState.checks[runState.index] = motorOffCheck.checked;
+  saveActiveRun();
+});
+
+noImageCheck.addEventListener('change', () => {
+  runState.noImageChecks[runState.index] = noImageCheck.checked;
   saveActiveRun();
 });
 
@@ -686,7 +697,7 @@ doneBtn.addEventListener('click', () => {
 });
 
 async function completeRoute() {
-  const { siteName, routeName, routeId, assets, checks } = runState;
+  const { siteName, routeName, routeId, assets, checks, noImageChecks } = runState;
   const dateStamp = todayStamp();
   const fileName = `${slugify(siteName)}-${slugify(routeName)}-${dateStamp}.json`;
   const offCount = checks.filter(Boolean).length;
@@ -697,7 +708,7 @@ async function completeRoute() {
     date: dateStamp,
     completedAt: new Date().toISOString(),
     fileName,
-    assets: assets.map((a, i) => ({ name: a.name, motorOff: checks[i] }))
+    assets: assets.map((a, i) => ({ name: a.name, motorOff: checks[i], noImageTaken: noImageChecks[i] }))
   };
 
   const record = {
